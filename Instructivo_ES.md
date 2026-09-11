@@ -56,8 +56,8 @@ Inicia el juego una vez para comprobar que REFramework se haya instalado correct
 Descarga el archivo Lua del mod:
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Camilo-tsx/Onimusha-mod/main/Onimusha_AI_MOD.lua">
-    <strong>⬇️ Descargar Onimusha AI Mod</strong>
+  <a href="https://github.com/Camilo-tsx/Onimusha-mod/blob/main/Onimusha_AI_MOD.lua">
+    <strong>⬇️ Download Onimusha AI Mod</strong>
   </a>
 </p>
 
