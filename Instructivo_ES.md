@@ -1,7 +1,7 @@
 <p align="right">
   <strong>Español</strong>
   &nbsp;•&nbsp;
-  <a href="README.md">English</a>
+  <a href="README.MD">English</a>
 </p>
 # Onimusha: Way of the Sword — AI Difficulty Mod
 
