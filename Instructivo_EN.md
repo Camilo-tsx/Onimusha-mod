@@ -1,7 +1,7 @@
 <p align="right">
-  <a href="Instructivo_EN.md">Español</a>
+  <strong>Español</strong>
   &nbsp;•&nbsp;
-  <strong>English</strong>
+  <a href="README.md">English</a>
 </p>
 # Onimusha: Way of the Sword — AI Difficulty Mod
 
