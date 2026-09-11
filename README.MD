@@ -1,9 +1,8 @@
 <p align="right">
-  <strong>Español</strong>
+  <a href="Instructivo.md">Español</a>
   &nbsp;•&nbsp;
-  <a href="README.md">English</a>
+  <strong>English</strong>
 </p>
-
 # Onimusha: Way of the Sword — AI Difficulty Mod
 
 Un mod de dificultad para **Onimusha: Way of the Sword** que hace que los combates sean más agresivos y dinámicos.
