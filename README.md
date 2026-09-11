@@ -54,11 +54,11 @@ Inicia el juego una vez para comprobar que REFramework se haya instalado correct
 
 ## 2. Instalar el mod
 
-Descarga el archivo `.lua` del mod:
+Descarga el archivo Lua del mod:
 
 <p align="center">
-  <a href="Onimusha_AI_Tweaks.lua">
-    <strong>⬇️ Descargar Onimusha AI Tweaks</strong>
+  <a href="https://raw.githubusercontent.com/Camilo-tsx/Onimusha-mod/main/Onimusha_AI_MOD.lua">
+    <strong>⬇️ Descargar Onimusha AI Mod</strong>
   </a>
 </p>
 
@@ -74,7 +74,7 @@ Luego abre:
 reframework/autorun/
 ```
 
-Coloca el archivo `Onimusha_AI_Tweaks.lua` dentro de esa carpeta.
+Coloca el archivo `Onimusha_AI_MOD.lua` dentro de esa carpeta.
 
 La estructura final debería quedar así:
 
@@ -83,7 +83,7 @@ Onimusha Way of the Sword/
 ├── dinput8.dll
 └── reframework/
     └── autorun/
-        └── Onimusha_AI_Tweaks.lua
+        └── Onimusha_AI_MOD.lua
 ```
 
 ### ¡Eso es todo!
@@ -110,17 +110,17 @@ Si aparece ese mensaje, el mod está cargado correctamente.
 
 # Código fuente
 
-¿No quieres descargar el archivo?
+¿No quieres descargar el archivo directamente?
 
-Puedes revisar el código fuente completo directamente desde GitHub.
+Puedes revisar el código fuente completo del mod desde GitHub:
 
 <p align="center">
-  <a href="Onimusha_AI_Tweaks.lua">
+  <a href="Onimusha_MOD_lua">
     <strong>📄 Ver código fuente completo</strong>
   </a>
 </p>
 
-El mod está escrito completamente en **Lua de texto plano**.
+El código está escrito completamente en **Lua de texto plano**.
 
 No contiene ejecutables ni archivos compilados.
 
@@ -130,15 +130,15 @@ Puedes abrir el archivo, revisar todo el código y copiarlo directamente desde G
 
 # Instalación manual
 
-Si prefieres no utilizar el archivo descargable, puedes crear el archivo manualmente.
+Si prefieres no utilizar el archivo `.lua` descargable, puedes crear el archivo manualmente.
 
 Crea un archivo llamado:
 
 ```text
-Onimusha_AI_Tweaks.lua
+Onimusha_AI_MOD.lua
 ```
 
-Copia dentro el código fuente del mod y colócalo en:
+Copia dentro el código fuente del archivo `Onimusha_MOD_lua` y colócalo en:
 
 ```text
 reframework/autorun/
@@ -149,7 +149,7 @@ La estructura final debe ser:
 ```text
 reframework/
 └── autorun/
-    └── Onimusha_AI_Tweaks.lua
+    └── Onimusha_AI_MOD.lua
 ```
 
 No es necesario modificar ningún valor del código.
@@ -161,7 +161,7 @@ No es necesario modificar ningún valor del código.
 Para desinstalar el mod, simplemente elimina:
 
 ```text
-reframework/autorun/Onimusha_AI_Tweaks.lua
+reframework/autorun/Onimusha_AI_MOD.lua
 ```
 
 No es necesario desinstalar REFramework.
@@ -180,12 +180,5 @@ Requiere:
 
 ---
 
-# Créditos
-
 Si te sirvió el mod, considera dejar una ⭐ en el repositorio.
 
-
-
-<p align="center">
-  <a href="README.md">🇬🇧 Read this page in English</a>
-</p>
