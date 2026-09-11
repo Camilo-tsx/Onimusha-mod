@@ -1,0 +1,728 @@
+local MOD_NAME = "Onimusha AI Tweaks"
+
+local CALM_TYPE_VALUE = 0
+
+local calm_state = {
+    is_calm = false,
+    hook_installed = false,
+    changes_seen = 0,
+}
+
+local function calm_optional(fn)
+    local ok, result = pcall(fn)
+
+    if ok then
+        return result
+    end
+
+    return nil
+end
+
+local function calm_find_method(type_name, method_name)
+    local definition = calm_optional(function()
+        return sdk.find_type_definition(type_name)
+    end)
+
+    if definition == nil then
+        return nil
+    end
+
+    local direct = calm_optional(function()
+        return definition:get_method(method_name)
+    end)
+
+    if direct ~= nil then
+        return direct
+    end
+
+    for _, method in ipairs(
+        calm_optional(function()
+            return definition:get_methods()
+        end) or {}
+    ) do
+        if calm_optional(function()
+            return method:get_name()
+        end) == method_name then
+            return method
+        end
+    end
+
+    return nil
+end
+
+do
+    local state_change_method = calm_find_method(
+        "app.cEnemyAISquadManager",
+        "noticeChangeChanbaraRhytmState"
+    )
+
+    if state_change_method ~= nil then
+        local captured_type_arg = nil
+
+        local ok = pcall(function()
+            sdk.hook(
+                state_change_method,
+
+                function(args)
+                    captured_type_arg = args[4]
+                end,
+
+                function(retval)
+                    local value = calm_optional(function()
+                        return sdk.to_int64(captured_type_arg)
+                    end)
+
+                    if value ~= nil then
+                        calm_state.is_calm = (value == CALM_TYPE_VALUE)
+                        calm_state.changes_seen =
+                            calm_state.changes_seen + 1
+                    end
+
+                    return retval
+                end
+            )
+        end)
+
+        calm_state.hook_installed = ok == true
+    end
+end
+
+local RHYTHM_TYPE_NAME = "app.cEnemyAISquadChanbaraRhythm"
+
+local FIRST_INTERVAL_PERCENT = 20
+local BETWEEN_INTERVAL_PERCENT = 5
+
+local rhythm_state = {
+    hooks_installed = 0,
+    calls_first = 0,
+    calls_between = 0,
+    last_first = "sin ver",
+    last_between = "sin ver",
+    error = "",
+}
+
+local function rhythm_optional(fn)
+    local ok, result = pcall(fn)
+
+    if ok then
+        return result
+    end
+
+    return nil
+end
+
+local function rhythm_type_name_of(definition)
+    return tostring(
+        definition
+        and rhythm_optional(function()
+            return definition:get_full_name()
+        end)
+        or "?"
+    )
+end
+
+local function rhythm_matching_methods(method_name)
+    local definition = rhythm_optional(function()
+        return sdk.find_type_definition(RHYTHM_TYPE_NAME)
+    end)
+
+    local result = {}
+
+    if definition == nil then
+        return result
+    end
+
+    for _, method in ipairs(
+        rhythm_optional(function()
+            return definition:get_methods()
+        end) or {}
+    ) do
+        local name = rhythm_optional(function()
+            return method:get_name()
+        end)
+
+        local return_name = rhythm_type_name_of(
+            rhythm_optional(function()
+                return method:get_return_type()
+            end)
+        )
+
+        if name == method_name
+            and return_name == "System.Single" then
+
+            result[#result + 1] = method
+        end
+    end
+
+    return result
+end
+
+local function scale_rhythm_result(retval, key, percent)
+    local original = rhythm_optional(function()
+        return sdk.to_float(retval)
+    end)
+
+    if type(original) ~= "number" or original ~= original then
+        return retval
+    end
+
+    local scaled = original * percent / 100.0
+
+    if key == "first" then
+        rhythm_state.calls_first =
+            rhythm_state.calls_first + 1
+
+        rhythm_state.last_first =
+            string.format(
+                "%.3fs -> %.3fs",
+                original,
+                scaled
+            )
+    else
+        rhythm_state.calls_between =
+            rhythm_state.calls_between + 1
+
+        rhythm_state.last_between =
+            string.format(
+                "%.3fs -> %.3fs",
+                original,
+                scaled
+            )
+    end
+
+    return sdk.float_to_ptr(scaled)
+end
+
+local function install_rhythm_group(
+    key,
+    method_name,
+    percent
+)
+    local methods = rhythm_matching_methods(method_name)
+
+    for _, method in ipairs(methods) do
+        local ok, err = pcall(function()
+            sdk.hook(
+                method,
+
+                function()
+                end,
+
+                function(retval)
+                    return scale_rhythm_result(
+                        retval,
+                        key,
+                        percent
+                    )
+                end
+            )
+        end)
+
+        if ok then
+            rhythm_state.hooks_installed =
+                rhythm_state.hooks_installed + 1
+        else
+            rhythm_state.error =
+                "Hook fallo para "
+                .. method_name
+                .. ": "
+                .. tostring(err)
+        end
+    end
+end
+
+if sdk.to_float ~= nil
+    and sdk.float_to_ptr ~= nil then
+
+    install_rhythm_group(
+        "first",
+        "lotFirstIntervalSec",
+        FIRST_INTERVAL_PERCENT
+    )
+
+    install_rhythm_group(
+        "between",
+        "lotIntervalSec",
+        BETWEEN_INTERVAL_PERCENT
+    )
+else
+    rhythm_state.error =
+        "Esta build de REFramework no tiene sdk.to_float/float_to_ptr"
+end
+
+local PRESSURE_MIN_DELAY_MULTIPLIER = 0.05
+local PRESSURE_RANDOM_DELAY_MULTIPLIER = 0.05
+
+local PRESSURE_MIN_DELAY_FLOOR_SECONDS = 1.0
+local PRESSURE_RANDOM_DELAY_FLOOR_SECONDS = 1.0
+
+local pressure_state = {
+    patched = false,
+    attempts = 0,
+    status = "Esperando EnemyManager",
+    fields_found = {},
+}
+
+local function pressure_optional(fn)
+    local ok, result = pcall(fn)
+
+    if ok then
+        return result
+    end
+
+    return nil
+end
+
+local function patch_pressure_once()
+    if pressure_state.patched then
+        return
+    end
+
+    pressure_state.attempts =
+        pressure_state.attempts + 1
+
+    local manager = pressure_optional(function()
+        return sdk.get_managed_singleton(
+            "app.EnemyManager"
+        )
+    end)
+
+    if manager == nil then
+        pressure_state.status =
+            "EnemyManager singleton no disponible todavia"
+
+        return
+    end
+
+    local common = pressure_optional(function()
+        return manager:get_field("CommonParam")
+    end)
+
+    if common == nil then
+        pressure_state.status =
+            "CommonParam no encontrado"
+
+        return
+    end
+
+    local pressure =
+        pressure_optional(function()
+            return common:get_field("_PressureParam")
+        end)
+        or
+        pressure_optional(function()
+            return common:call("get_PressureParam")
+        end)
+
+    if pressure == nil then
+        pressure_state.status =
+            "_PressureParam no encontrado"
+
+        return
+    end
+
+    local distance_param =
+        pressure_optional(function()
+            return pressure:get_field(
+                "_PressureMaxDistanceParam"
+            )
+        end)
+
+    if distance_param == nil then
+        pressure_state.status =
+            "_PressureMaxDistanceParam no encontrado"
+
+        return
+    end
+
+    local min_delay =
+        pressure_optional(function()
+            return distance_param:get_field(
+                "_MinDelayTime"
+            )
+        end)
+
+    local random_delay =
+        pressure_optional(function()
+            return distance_param:get_field(
+                "_RandomDelayTime"
+            )
+        end)
+
+    if type(min_delay) == "number" then
+        local ok = pressure_optional(function()
+            local desired = math.max(
+                PRESSURE_MIN_DELAY_FLOOR_SECONDS,
+                min_delay
+                    * PRESSURE_MIN_DELAY_MULTIPLIER
+            )
+
+            distance_param:set_field(
+                "_MinDelayTime",
+                desired
+            )
+
+            return true
+        end)
+
+        pressure_state.fields_found["_MinDelayTime"] =
+            ok == true
+    end
+
+    if type(random_delay) == "number" then
+        local ok = pressure_optional(function()
+            local desired = math.max(
+                PRESSURE_RANDOM_DELAY_FLOOR_SECONDS,
+                random_delay
+                    * PRESSURE_RANDOM_DELAY_MULTIPLIER
+            )
+
+            distance_param:set_field(
+                "_RandomDelayTime",
+                desired
+            )
+
+            return true
+        end)
+
+        pressure_state.fields_found["_RandomDelayTime"] =
+            ok == true
+    end
+
+    if pressure_state.fields_found["_MinDelayTime"]
+        or pressure_state.fields_found["_RandomDelayTime"] then
+
+        pressure_state.patched = true
+        pressure_state.status =
+            "Pressure delay parcheado"
+
+        log.info(
+            "["
+            .. MOD_NAME
+            .. "] "
+            .. pressure_state.status
+        )
+    else
+        pressure_state.status =
+            "Se encontro _PressureMaxDistanceParam pero ningun campo esperado"
+    end
+end
+
+re.on_frame(function()
+    if not pressure_state.patched then
+        patch_pressure_once()
+    end
+end)
+
+local MANAGER_TYPE =
+    "app.cEnemyAISquadManager"
+
+local RHYTHM_WAIT = 9
+local SUCCESS = 0
+
+local THROTTLE_WINDOW_FRAMES = 30
+local THROTTLE_WINDOW_THRESHOLD = 60
+local THROTTLE_COOLDOWN_FRAMES = 180
+
+local throttle_state = {
+    current_frame = 0,
+    window_start_frame = 0,
+    window_calls = 0,
+    throttled_until_frame = 0,
+    times_triggered = 0,
+    is_throttled_now = false,
+}
+
+re.on_frame(function()
+    throttle_state.current_frame =
+        throttle_state.current_frame + 1
+
+    throttle_state.is_throttled_now =
+        throttle_state.current_frame
+        < throttle_state.throttled_until_frame
+
+    if throttle_state.current_frame
+        - throttle_state.window_start_frame
+        >= THROTTLE_WINDOW_FRAMES then
+
+        if throttle_state.window_calls
+            > THROTTLE_WINDOW_THRESHOLD then
+
+            throttle_state.throttled_until_frame =
+                throttle_state.current_frame
+                + THROTTLE_COOLDOWN_FRAMES
+
+            throttle_state.is_throttled_now = true
+
+            throttle_state.times_triggered =
+                throttle_state.times_triggered + 1
+        end
+
+        throttle_state.window_start_frame =
+            throttle_state.current_frame
+
+        throttle_state.window_calls = 0
+    end
+end)
+
+local FIXED_CAP = nil
+
+local state = {
+    calls = 0,
+    rhythm_waits = 0,
+    bypassed = 0,
+    blocked = 0,
+    signature = "no encontrado",
+    error = "",
+}
+
+local call_stack = {}
+
+local function optional(fn)
+    local ok, result = pcall(fn)
+
+    if ok then
+        return result
+    end
+
+    return nil
+end
+
+local function type_name(definition)
+    return tostring(
+        definition
+        and optional(function()
+            return definition:get_full_name()
+        end)
+        or "?"
+    )
+end
+
+local function describe_method(method)
+    if method == nil then
+        return "no encontrado"
+    end
+
+    local params = {}
+
+    for index, definition in ipairs(
+        optional(function()
+            return method:get_param_types()
+        end) or {}
+    ) do
+        params[index] = type_name(definition)
+    end
+
+    return tostring(
+        optional(function()
+            return method:get_name()
+        end)
+        or "?"
+    )
+    .. "("
+    .. table.concat(params, ",")
+    .. ") -> "
+    .. type_name(
+        optional(function()
+            return method:get_return_type()
+        end)
+    )
+end
+
+local function find_method(
+    name,
+    return_type,
+    parameter_count
+)
+    local definition = optional(function()
+        return sdk.find_type_definition(
+            MANAGER_TYPE
+        )
+    end)
+
+    if definition == nil then
+        return nil
+    end
+
+    for _, method in ipairs(
+        optional(function()
+            return definition:get_methods()
+        end) or {}
+    ) do
+        local method_name =
+            optional(function()
+                return method:get_name()
+            end)
+
+        local result =
+            type_name(
+                optional(function()
+                    return method:get_return_type()
+                end)
+            )
+
+        local params =
+            optional(function()
+                return method:get_param_types()
+            end)
+            or {}
+
+        if method_name == name
+            and result == return_type
+            and #params == parameter_count then
+
+            return method
+        end
+    end
+
+    return nil
+end
+
+local function signed_int32(retval)
+    local value = optional(function()
+        return sdk.to_int64(retval)
+    end)
+
+    if type(value) ~= "number" then
+        return nil
+    end
+
+    value = value & 0xFFFFFFFF
+
+    if value >= 0x80000000 then
+        value = value - 0x100000000
+    end
+
+    return value
+end
+
+local function get_active_privilege_count(manager)
+    if manager == nil then
+        return nil
+    end
+
+    local list = optional(function()
+        return manager:get_field(
+            "_AttackPrivilegeList"
+        )
+    end)
+
+    if list == nil then
+        return nil
+    end
+
+    return optional(function()
+        return tonumber(
+            list:call("get_Count")
+        )
+    end)
+end
+
+local function install_hook()
+    local decision_method = find_method(
+        "enableGetAttackPrivilege",
+        "app.EnemyDef.CHECK_ATTACK_PRIVILEGE_TYPE",
+        2
+    )
+
+    state.signature =
+        describe_method(decision_method)
+
+    if decision_method == nil then
+        state.error =
+            "No se encontro enableGetAttackPrivilege - revisar firma/tipo en esta build"
+
+        log.error(
+            "["
+            .. MOD_NAME
+            .. "] "
+            .. state.error
+        )
+
+        return
+    end
+
+    local ok, err = pcall(function()
+        sdk.hook(
+            decision_method,
+
+            function(args)
+                local manager = optional(function()
+                    return sdk.to_managed_object(
+                        args[2]
+                    )
+                end)
+
+                call_stack[#call_stack + 1] =
+                    manager or false
+            end,
+
+            function(retval)
+                local manager =
+                    call_stack[#call_stack]
+
+                call_stack[#call_stack] = nil
+
+                if manager == false then
+                    manager = nil
+                end
+
+                state.calls =
+                    state.calls + 1
+
+                throttle_state.window_calls =
+                    throttle_state.window_calls + 1
+
+                local result =
+                    signed_int32(retval)
+
+                if result ~= RHYTHM_WAIT then
+                    return retval
+                end
+
+                state.rhythm_waits =
+                    state.rhythm_waits + 1
+
+                if calm_state.is_calm then
+                    return retval
+                end
+
+                if throttle_state.is_throttled_now then
+                    return retval
+                end
+
+                state.bypassed =
+                    state.bypassed + 1
+
+                return sdk.to_ptr(SUCCESS)
+            end
+        )
+    end)
+
+    if not ok then
+        state.error =
+            "sdk.hook fallo: "
+            .. tostring(err)
+
+        log.error(
+            "["
+            .. MOD_NAME
+            .. "] "
+            .. state.error
+        )
+
+        return
+    end
+
+    log.info(
+        "["
+        .. MOD_NAME
+        .. "] Hook instalado correctamente."
+    )
+end
+
+install_hook()
+
+re.on_draw_ui(function()
+    imgui.text("Mod activado")
+end)
